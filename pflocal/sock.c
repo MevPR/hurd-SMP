@@ -278,50 +278,72 @@ addr_create (struct addr **addr)
   return err;
 }
 
-/* Bind SOCK to ADDR.  */
+/* Unbind SOCK from its address.  Returns EINVAL if SOCK is not bound,
+   for instance because addr_unbind got there first.  */
+static error_t
+sock_unbind (struct sock *sock)
+{
+  error_t err = 0;
+  struct addr *addr;
+
+  /* Lock ADDR before SOCK, as addr_unbind does, and keep a weak reference
+     on it while we do not hold SOCK's lock.  */
+  pthread_mutex_lock (&sock->lock);
+  addr = sock->addr;
+  if (addr)
+    ports_port_ref_weak (addr);
+  pthread_mutex_unlock (&sock->lock);
+  if (! addr)
+    return EINVAL;
+
+  pthread_mutex_lock (&addr->lock);
+  pthread_mutex_lock (&sock->lock);
+  if (sock->addr == addr)
+    {
+      addr->sock = NULL;
+      sock->addr = NULL;
+      /* Whoever calls us holds a reference on SOCK as well.  */
+      sock->refs--;
+      assert_backtrace (sock->refs > 0);
+      ports_port_deref_weak (addr);
+    }
+  else
+    err = EINVAL;
+  pthread_mutex_unlock (&sock->lock);
+  pthread_mutex_unlock (&addr->lock);
+
+  ports_port_deref_weak (addr);
+  return err;
+}
+
+/* Bind SOCK to ADDR, or unbind it if ADDR is NULL.  */
 error_t
 sock_bind (struct sock *sock, struct addr *addr)
 {
   error_t err = 0;
   struct addr *old_addr;
 
-  if (addr)
-    pthread_mutex_lock (&addr->lock);
+  if (! addr)
+    return sock_unbind (sock);
+
+  pthread_mutex_lock (&addr->lock);
   pthread_mutex_lock (&sock->lock);
 
   old_addr = sock->addr;
-  if (addr && old_addr)
+  if (old_addr)
     err = EINVAL;		/* SOCK already bound.  */
-  else if (!addr && !old_addr)
-    err = EINVAL;		/* SOCK already bound.  */
-  else if (addr && addr->sock)
+  else if (addr->sock)
     err = EADDRINUSE;		/* Something else already bound ADDR.  */
-  else if (addr)
-    addr->sock = sock;		/* First binding for SOCK.  */
   else
-    old_addr->sock = NULL;	/* Unbinding SOCK.  */
-
-  if (! err)
     {
+      addr->sock = sock;	/* First binding for SOCK.  */
       sock->addr = addr;
-      if (addr)
-	{
-	  sock->refs++;
-	  ports_port_ref_weak (addr);
-	}
-      if (old_addr)
-	{
-	  /* Note that we don't have to worry about SOCK's ref count going to
-	     zero because whoever's calling us should be holding a ref.  */
-	  sock->refs--;
-	  ports_port_deref_weak (old_addr);
-	  assert_backtrace (sock->refs > 0);	/* But make sure... */
-	}
+      sock->refs++;
+      ports_port_ref_weak (addr);
     }
 
   pthread_mutex_unlock (&sock->lock);
-  if (addr)
-    pthread_mutex_unlock (&addr->lock);
+  pthread_mutex_unlock (&addr->lock);
 
   return err;
 }

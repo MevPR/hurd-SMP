@@ -18,7 +18,7 @@ Base: the GNU Hurd from git.savannah.gnu.org/git/hurd/hurd.git (branch
 
 | | |
 |---|---|
-| **Fixes** | 4 patches on current upstream master (branch `main` = `smp-fixes`) |
+| **Fixes** | 5 patches on current upstream master (branch `main` = `smp-fixes` + this README) |
 | **Tested** | on Debian GNU/Hurd amd64 (hurd 0.9.git20250801, rebuilt in a Hurd VM with these fixes; libports in the form adapted to that version), together with the gnumach and glibc fixes: a parallel build/sort/tar/find/fork stress test on 2 CPUs passes 6 times out of 6 |
 | **Upstream** | prepared for bug-hurd@gnu.org, **not yet sent** |
 
@@ -49,6 +49,18 @@ Base: the GNU Hurd from git.savannah.gnu.org/git/hurd/hurd.git (branch
   Termination is now blocked around the request.
   (`libpager: do not use the control port while the object may terminate`)
 
+- **pflocal: abort when a socket and its address die together.**  When
+  the last user port of a bound socket and the port of its address went
+  away at the same time (processes dying at shutdown or boot), both
+  `sock_deref` and `addr_unbind` unbound the socket; `sock_deref` then got
+  `EINVAL` and its `assert_backtrace` aborted pflocal, taking all Unix
+  sockets of the system with it.  `sock_bind` also cleared the address'
+  socket pointer without the address lock, so other timings double
+  dereferenced socket and address.  Unbinding now locks the address
+  before the socket, as `addr_unbind` does.  With the fix, 6 of 6 test
+  boots ran without a pflocal abort, against 3 crashes in 4 boots before.
+  (`pflocal: unbind a socket with its address locked`)
+
 The investigation behind each fix is in
 [mach-SMP: smp-dev/notes/hang-fork-suspend.md](https://github.com/MevPR/mach-SMP/blob/main/smp-dev/notes/hang-fork-suspend.md).
 
@@ -59,7 +71,7 @@ The investigation behind each fix is in
 | `upstream` | mirror of git.savannah.gnu.org/git/hurd/hurd.git master |
 | `main` | the fix series + this README |
 | `smp-fixes` | the fix series alone, as prepared for bug-hurd |
-| `libports-final-deref`, `libfshelp-rlock-wait`, `libpager-memobjcntl-race` | one topic each, on `upstream` |
+| `libports-final-deref`, `libfshelp-rlock-wait`, `libpager-memobjcntl-race`, `pflocal-unbind-race` | one topic each, on `upstream` |
 
 Work by Magnus Reimann, done together with Claude (an AI model by
 Anthropic).  The GNU Hurd is free software of the GNU project.

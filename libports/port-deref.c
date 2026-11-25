@@ -38,13 +38,23 @@ ports_port_deref (void *portstruct)
       if (result.hard == 0 && result.weak > 1)
         (*pi->class->dropweak_routine) (pi);
 
-      refcounts_deref_weak (&pi->refcounts, &result);
+      ports_port_deref_weak (pi);
+      return;
     }
-  else
-    refcounts_deref (&pi->refcounts, &result);
 
+  if (refcounts_deref_unless_last (&pi->refcounts, &result))
+    return;
+
+  /* We are dropping the last hard reference.  Do it with the hash table
+     lock held, so that nobody can reacquire one through a lookup in the
+     meantime: otherwise two threads could both see the port become
+     unreferenced, and both deallocate it.  */
+  pthread_rwlock_wrlock (&_ports_htable_lock);
+  refcounts_deref (&pi->refcounts, &result);
   if (result.hard == 0 && result.weak == 1)
-    /* Only the reference held by the hash tables is left, try to
-       complete the deallocation.  */
+    /* Only the reference held by the hash tables is left: complete the
+       deallocation.  This releases _ports_htable_lock.  */
     _ports_complete_deallocate (pi);
+  else
+    pthread_rwlock_unlock (&_ports_htable_lock);
 }

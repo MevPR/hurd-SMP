@@ -303,6 +303,61 @@ refcounts_deref_weak (refcounts_t *ref, struct references *result)
     *result = r.references;
 }
 
+/* Decrement the hard reference count of REF, unless REF holds exactly
+   one hard reference, in which case nothing is changed.  Return non-zero
+   if the count was decremented, and then write the result to RESULT if
+   it is not NULL.  This lets the caller drop the last hard reference
+   with some lock held.  This function uses atomic operations.  It is not
+   required to serialize calls to this function.  */
+REFCOUNT_EI int
+refcounts_deref_unless_last (refcounts_t *ref, struct references *result)
+{
+  const union _references op = { .references = REFCOUNT_REFERENCES (1, 0) };
+  union _references r, n;
+  r.value = __atomic_load_n (&ref->value, __ATOMIC_RELAXED);
+  do
+    {
+      assert_backtrace (r.references.hard != 0
+			|| !"refcount underflowed!");
+      if (r.references.hard == 1)
+	return 0;
+      n.value = r.value - op.value;
+    }
+  while (! __atomic_compare_exchange_n (&ref->value, &r.value, n.value, 1,
+					__ATOMIC_RELEASE, __ATOMIC_RELAXED));
+  if (result)
+    *result = n.references;
+  return 1;
+}
+
+/* Decrement the weak reference count of REF, unless that would leave
+   REF with no hard reference and LAST weak references, in which case
+   nothing is changed.  Return non-zero if the count was decremented,
+   and then write the result to RESULT if it is not NULL.  This function
+   uses atomic operations.  It is not required to serialize calls to
+   this function.  */
+REFCOUNT_EI int
+refcounts_deref_weak_unless (refcounts_t *ref, uint32_t last,
+			     struct references *result)
+{
+  const union _references op = { .references = REFCOUNT_REFERENCES (0, 1) };
+  union _references r, n;
+  r.value = __atomic_load_n (&ref->value, __ATOMIC_RELAXED);
+  do
+    {
+      assert_backtrace (r.references.weak != 0
+			|| !"refcount underflowed!");
+      if (r.references.hard == 0 && r.references.weak == last + 1)
+	return 0;
+      n.value = r.value - op.value;
+    }
+  while (! __atomic_compare_exchange_n (&ref->value, &r.value, n.value, 1,
+					__ATOMIC_RELEASE, __ATOMIC_RELAXED));
+  if (result)
+    *result = n.references;
+  return 1;
+}
+
 /* Store the current reference counts of REF in RESULT.  This function
    uses atomic operations.  It is not required to serialize calls to
    this function.  */

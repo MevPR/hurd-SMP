@@ -358,6 +358,34 @@ refcounts_deref_weak_unless (refcounts_t *ref, uint32_t last,
   return 1;
 }
 
+/* Increment the hard reference count of REF, unless REF has no hard
+   reference and at most DYING weak references, which the caller uses
+   to tell that the object is being destroyed.  Return non-zero if the
+   count was incremented, and then write the result to RESULT if it is
+   not NULL.  This function uses atomic operations.  It is not required
+   to serialize calls to this function.  */
+REFCOUNT_EI int
+refcounts_ref_unless_dying (refcounts_t *ref, uint32_t dying,
+			    struct references *result)
+{
+  const union _references op = { .references = REFCOUNT_REFERENCES (1, 0) };
+  union _references r, n;
+  r.value = __atomic_load_n (&ref->value, __ATOMIC_RELAXED);
+  do
+    {
+      if (r.references.hard == 0 && r.references.weak <= dying)
+	return 0;
+      assert_backtrace (r.references.hard != UINT32_MAX
+			|| !"refcount overflowed!");
+      n.value = r.value + op.value;
+    }
+  while (! __atomic_compare_exchange_n (&ref->value, &r.value, n.value, 1,
+					__ATOMIC_ACQUIRE, __ATOMIC_RELAXED));
+  if (result)
+    *result = n.references;
+  return 1;
+}
+
 /* Store the current reference counts of REF in RESULT.  This function
    uses atomic operations.  It is not required to serialize calls to
    this function.  */

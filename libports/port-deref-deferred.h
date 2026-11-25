@@ -86,4 +86,7 @@ struct port_info;
 /* Schedule an object for deallocation.  */
 void _ports_port_deref_deferred (struct port_info *);
 
+/* Schedule the memory of an object without references to be freed.  */
+void _ports_free_deferred (struct port_info *);
+
 #endif	/* _HURD_PORTS_DEREF_DEFERRED_ */

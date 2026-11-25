@@ -84,6 +84,7 @@ struct pi_list
 {
   struct pi_list *next;
   struct port_info *pi;
+  int free_only;		/* Just free PI, it has no references left.  */
 };
 
 /* Called by a thread that enters its quiescent period.  */
@@ -115,7 +116,10 @@ _ports_thread_quiescent (struct ports_threadpool *pool,
       struct pi_list *old = p;
       p = p->next;
 
-      ports_port_deref (old->pi);
+      if (old->free_only)
+	free (old->pi);
+      else
+	ports_port_deref (old->pi);
       free (old);
     }
 }
@@ -140,9 +144,8 @@ _ports_thread_offline (struct ports_threadpool *pool,
   pthread_spin_unlock (&pool->lock);
 }
 
-/* Schedule an object for deallocation.  */
-void
-_ports_port_deref_deferred (struct port_info *pi)
+static void
+defer (struct port_info *pi, int free_only)
 {
   struct ports_threadpool *pool = &pi->bucket->threadpool;
 
@@ -150,6 +153,7 @@ _ports_port_deref_deferred (struct port_info *pi)
   if (pl == NULL)
     return;
   pl->pi = pi;
+  pl->free_only = free_only;
 
   pthread_spin_lock (&pool->lock);
   pl->next = pool->young_objects;
@@ -160,4 +164,19 @@ _ports_port_deref_deferred (struct port_info *pi)
       flip_generations (pool);
     }
   pthread_spin_unlock (&pool->lock);
+}
+
+/* Schedule an object for deallocation.  */
+void
+_ports_port_deref_deferred (struct port_info *pi)
+{
+  defer (pi, 0);
+}
+
+/* Schedule the memory of PI, which has no references left, to be freed
+   once all threads went through a quiescent state.  */
+void
+_ports_free_deferred (struct port_info *pi)
+{
+  defer (pi, 1);
 }

@@ -60,5 +60,7 @@ _ports_complete_deallocate (struct port_info *pi)
   
   assert_backtrace (pi->current_rpcs == NULL);
 
-  free (pi);
+  /* Other threads may still have dequeued messages carrying PI as
+     protected payload: see ports_lookup_payload.  */
+  _ports_free_deferred (pi);
 }

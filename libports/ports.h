@@ -283,8 +283,12 @@ ports_lookup_payload (struct port_bucket *bucket,
   if (pi && class && pi->class != class)
     pi = NULL;
 
-  if (pi)
-    refcounts_unsafe_ref (&pi->refcounts, NULL);
+  /* The message may have been dequeued before the port was destroyed.
+     The memory of PI is only freed once all threads went through a
+     quiescent state, but we must not resurrect a port being destroyed,
+     that is, one with only the reference of the hash tables left.  */
+  if (pi && ! refcounts_ref_unless_dying (&pi->refcounts, 1, NULL))
+    pi = NULL;
 
   return pi;
 }

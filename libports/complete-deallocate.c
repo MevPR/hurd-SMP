@@ -22,6 +22,9 @@
 #include <assert-backtrace.h>
 #include <hurd/ihash.h>
 
+/* Called with _ports_htable_lock held for writing, when only the
+   reference held by the hash tables is left on PI.  Releases
+   _ports_htable_lock.  */
 void
 _ports_complete_deallocate (struct port_info *pi)
 {
@@ -30,16 +33,6 @@ _ports_complete_deallocate (struct port_info *pi)
   if (MACH_PORT_VALID (pi->port_right))
     {
       struct references result;
-
-      pthread_rwlock_wrlock (&_ports_htable_lock);
-      refcounts_references (&pi->refcounts, &result);
-      if (result.hard > 0 || result.weak > 1)
-        {
-          /* A reference was reacquired through a hash table lookup.
-             It's fine, we didn't touch anything yet.  */
-          pthread_rwlock_unlock (&_ports_htable_lock);
-          return;
-        }
 
       hurd_ihash_locp_remove (&_ports_htable, pi->ports_htable_entry);
       hurd_ihash_locp_remove (&pi->bucket->htable, pi->hentry);
@@ -52,6 +45,8 @@ _ports_complete_deallocate (struct port_info *pi)
       assert_perror_backtrace (err);
       pi->port_right = MACH_PORT_NULL;
     }
+  else
+    pthread_rwlock_unlock (&_ports_htable_lock);
 
   pthread_mutex_lock (&_ports_lock);
 

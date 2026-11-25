@@ -26,9 +26,16 @@ ports_port_deref_weak (void *portstruct)
 {
   struct port_info *pi = portstruct;
   struct references result;
+
+  if (refcounts_deref_weak_unless (&pi->refcounts, 1, &result))
+    return;
+
+  /* We may be leaving only the reference held by the hash tables: see
+     ports_port_deref.  */
+  pthread_rwlock_wrlock (&_ports_htable_lock);
   refcounts_deref_weak (&pi->refcounts, &result);
   if (result.hard == 0 && result.weak == 1)
-    /* Only the reference held by the hash tables is left, try to
-       complete the deallocation.  */
     _ports_complete_deallocate (pi);
+  else
+    pthread_rwlock_unlock (&_ports_htable_lock);
 }

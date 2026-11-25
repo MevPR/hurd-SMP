@@ -32,17 +32,20 @@ fshelp_rlock_drop_peropen (struct rlock_peropen *po)
 
   for (l = *po->locks; l; l = t)
     {
+      t = l->po.next;
+      list_unlink (node, l);
+
       if (l->waiting)
 	{
-	  l->waiting = 0;
+	  /* The waiters sleep on L->wait: let the last of them free L.  */
 	  pthread_cond_broadcast (&l->wait);
+	  l->dead = 1;
 	}
-
-      list_unlink (node, l);
-      pthread_cond_destroy(&l->wait);
-
-      t = l->po.next;
-      free (l);
+      else
+	{
+	  pthread_cond_destroy (&l->wait);
+	  free (l);
+	}
     }
 
   return 0;

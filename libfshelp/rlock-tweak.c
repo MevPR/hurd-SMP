@@ -62,17 +62,23 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
     }
 
   inline struct rlock_list *
-  rele_lock (struct rlock_list *l, int wake_waiters)
+  rele_lock (struct rlock_list *l)
     {
       struct rlock_list *next = l->po.next;
       list_unlink (po, l);
       list_unlink (node, l);
 
-      if (wake_waiters && l->waiting)
-	pthread_cond_broadcast (&l->wait);
-
-      pthread_cond_destroy(&l->wait);
-      free (l);
+      if (l->waiting)
+	{
+	  /* The waiters sleep on L->wait: let the last of them free L.  */
+	  pthread_cond_broadcast (&l->wait);
+	  l->dead = 1;
+	}
+      else
+	{
+	  pthread_cond_destroy (&l->wait);
+	  free (l);
+	}
       return next;
     }
 
@@ -99,7 +105,7 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
 			   && l->start + l->len <= start + len)))
 	    /* We wrap the locked region; consume it.  */
 	    {
-	      l = rele_lock (l, 1);
+	      l = rele_lock (l);
 	      continue;
 	    }
 	  else if (start <= l->start
@@ -115,10 +121,7 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
 	      l->start = start + len;
 
 	      if (l->waiting)
-		{
-		  l->waiting = 0;
-		  pthread_cond_broadcast (&l->wait);
-		}
+		pthread_cond_broadcast (&l->wait);
 	    }
 	  else if (l->start < start
 		   && ((start < l->start + l->len
@@ -132,10 +135,7 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
 	      l->len = start - l->start;
 
 	      if (l->waiting)
-		{
-		  l->waiting = 0;
-		  pthread_cond_broadcast (&l->wait);
-		}
+		pthread_cond_broadcast (&l->wait);
 	    }
 	  else if (l->start < start
 		   && (l->len == 0
@@ -236,7 +236,7 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
 		  if (! tail)
 		    {
 		      if (head)
-			(void) rele_lock (head, 0);
+			(void) rele_lock (head);
 		      return ENOMEM;
 		    }
 		}
@@ -259,7 +259,7 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
 		  start = l->start;
 		  len = l->len;
 
-		  l = rele_lock (l, 1);
+		  l = rele_lock (l);
 		  continue;
 		}
 	      else
@@ -278,7 +278,7 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
 
 	      if (type == l->type || type == F_WRLCK)
 		{
-		  l = rele_lock (l, 1);
+		  l = rele_lock (l);
 		  /* Try to merge more.  */
 		  continue;
 		}
@@ -327,7 +327,7 @@ fshelp_rlock_tweak (struct rlock_box *box, pthread_mutex_t *mutex,
 		    len += start - l->start;
 		  start = l->start;
 
-		  l = rele_lock (l, 1);
+		  l = rele_lock (l);
 
 		  /* Try to merge in more.  */
 		  continue;
@@ -537,8 +537,17 @@ retry:
         {
 	  if (cmd == F_SETLKW64)
 	    {
-	      e->waiting = 1;
-	      if (pthread_hurd_cond_wait_np (&e->wait, mutex))
+	      int cancelled;
+
+	      e->waiting++;
+	      cancelled = pthread_hurd_cond_wait_np (&e->wait, mutex);
+	      if (--e->waiting == 0 && e->dead)
+		{
+		  /* E was released while we were waiting.  */
+		  pthread_cond_destroy (&e->wait);
+		  free (e);
+		}
+	      if (cancelled)
 	        return EINTR;
 	      goto retry;
 	    }

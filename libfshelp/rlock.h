@@ -45,8 +45,12 @@ struct rlock_list
   struct rlock_linked_list node;
   struct rlock_linked_list po;
 
+  /* Threads waiting for this lock to go away sleep on WAIT; WAITING
+     counts them.  A lock released while some are waiting is only marked
+     DEAD, and the last of them frees it when it wakes up.  */
   pthread_cond_t wait;
   int waiting;
+  int dead;
 
   void *po_id;
 };

@@ -66,11 +66,15 @@ _pager_lock_object (struct pager *p,
 	}
     }
 
+  /* Keep the object from being terminated, and P->memobjcntl from being
+     destroyed, while we use it without the interlock.  */
+  _pager_block_termination (p);
   pthread_mutex_unlock (&p->interlock);
   memory_object_lock_request (p->memobjcntl, offset, size, should_return,
 			      should_flush, lock_value, 
 			      sync ? p->port.port_right : MACH_PORT_NULL);
   pthread_mutex_lock (&p->interlock);
+  _pager_allow_termination (p);
   
   if (sync)
     {

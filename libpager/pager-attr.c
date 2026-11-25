@@ -78,14 +78,17 @@ pager_change_attributes (struct pager *p,
 	}
     }      
 
+  /* Keep the object from being terminated, and P->memobjcntl from being
+     destroyed, while we use it without the interlock.  */
+  _pager_block_termination (p);
   pthread_mutex_unlock (&p->interlock);
   memory_object_change_attributes (p->memobjcntl, may_cache, copy_strategy,
 				   wait ? p->port.port_right : MACH_PORT_NULL);
-  
+  pthread_mutex_lock (&p->interlock);
+  _pager_allow_termination (p);
+
   if (wait)
     {
-      pthread_mutex_lock (&p->interlock);
-
       while (ar->attrs_pending)
 	pthread_cond_wait (&p->wakeup, &p->interlock);
 
@@ -96,7 +99,7 @@ pager_change_attributes (struct pager *p,
 	    ar->next->prevp = ar->prevp;
 	  free (ar);
 	}
-
-      pthread_mutex_unlock (&p->interlock);
     }
+
+  pthread_mutex_unlock (&p->interlock);
 }

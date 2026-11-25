@@ -143,15 +143,19 @@ sock_deref (struct sock *sock)
       sock->refs++;
       pthread_mutex_unlock (&sock->lock);
 
-      /* Unbind */
+      /* Unbind.  This fails with EINVAL if addr_unbind, run for the address
+	 port going away at the same time, already did it; it then also
+	 drops the reference of the address, or is about to.  */
       err = sock_bind (sock, NULL);
-      assert_backtrace (!err);
+      assert_backtrace (!err || err == EINVAL);
 
-      /* And release the ref, and thus kill SOCK.  */
+      /* And release our ref, killing SOCK if it was the last one.  */
       pthread_mutex_lock (&sock->lock);
       sock->refs--;
-      assert_backtrace (sock->refs == 0);
-      _sock_norefs (sock);
+      if (sock->refs == 0)
+	_sock_norefs (sock);
+      else
+	pthread_mutex_unlock (&sock->lock);
     }
   else
     pthread_mutex_unlock (&sock->lock);

@@ -18,7 +18,7 @@ Base: the GNU Hurd from git.savannah.gnu.org/git/hurd/hurd.git (branch
 
 | | |
 |---|---|
-| **Fixes** | 5 patches on current upstream master (branch `main` = `smp-fixes` + this README) |
+| **Fixes** | 6 patches on current upstream master (branch `main` = `smp-fixes` + this README) |
 | **Tested** | on Debian GNU/Hurd amd64 (hurd 0.9.git20250801, rebuilt in a Hurd VM with these fixes; libports in the form adapted to that version), together with the gnumach and glibc fixes: a parallel build/sort/tar/find/fork stress test on 2 CPUs passes 6 times out of 6 |
 | **Upstream** | prepared for bug-hurd@gnu.org, **not yet sent** |
 
@@ -61,6 +61,16 @@ Base: the GNU Hurd from git.savannah.gnu.org/git/hurd/hurd.git (branch
   boots ran without a pflocal abort, against 3 crashes in 4 boots before.
   (`pflocal: unbind a socket with its address locked`)
 
+- **console-client: the Hurd console died when it started slowly.**  With
+  `--daemonize`, the parent waits a fixed time for the daemon to report;
+  when the daemon is done later, its report to the parent that already
+  exited raises SIGPIPE and kills it.  Under QEMU without KVM the vga
+  driver needs more than 20 s to parse the 5.7 MB `unifont.bdf`, so every
+  boot ended without a console client.  The report is now sent with
+  SIGPIPE ignored.  With the fix the client was running after 6 of 6
+  boots, before after none.
+  (`console-client: survive a parent that gave up waiting`)
+
 The investigation behind each fix is in
 [mach-SMP: smp-dev/notes/hang-fork-suspend.md](https://github.com/MevPR/mach-SMP/blob/main/smp-dev/notes/hang-fork-suspend.md).
 
@@ -71,7 +81,7 @@ The investigation behind each fix is in
 | `upstream` | mirror of git.savannah.gnu.org/git/hurd/hurd.git master |
 | `main` | the fix series + this README |
 | `smp-fixes` | the fix series alone, as prepared for bug-hurd |
-| `libports-final-deref`, `libfshelp-rlock-wait`, `libpager-memobjcntl-race`, `pflocal-unbind-race` | one topic each, on `upstream` |
+| `libports-final-deref`, `libfshelp-rlock-wait`, `libpager-memobjcntl-race`, `pflocal-unbind-race`, `console-late-daemon` | one topic each, on `upstream` |
 
 Work by Magnus Reimann, done together with Claude (an AI model by
 Anthropic).  The GNU Hurd is free software of the GNU project.

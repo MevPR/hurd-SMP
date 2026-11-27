@@ -16,7 +16,8 @@ Base: the GNU Hurd from git.savannah.gnu.org/git/hurd/hurd.git (branch
 
 ## Related repositories
 
-The project is split in three repositories that belong together; a fix is only complete with all of them installed.
+The project is split into three repositories that belong together:
+running Debian GNU/Hurd on several CPUs needs the fixes from all three.
 
 | Repository | Component |
 |---|---|

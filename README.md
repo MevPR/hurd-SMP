@@ -14,12 +14,24 @@ of the root file system server, mostly.  This repository holds the fixes.
 Base: the GNU Hurd from git.savannah.gnu.org/git/hurd/hurd.git (branch
 `upstream`).  The original Hurd README is unchanged in [`README`](README).
 
+## Related repositories
+
+The project is split in three repositories that belong together; a fix is only complete with all of them installed.
+
+| Repository | Component |
+|---|---|
+| [mach-SMP](https://github.com/MevPR/mach-SMP) | GNU Mach kernel (SMP fixes, `smp_pset=default`, tests); investigation notes, tools and test scripts for the whole project; the netdde and rumpkernel patches |
+| **hurd-SMP** (this one) | Hurd libraries and servers (libports, libfshelp, libpager, pflocal, console-client) |
+| [hurd-glibc](https://github.com/MevPR/hurd-glibc) | glibc's Hurd port (fork deadlock; `multiple_threads` for glibc ≤ 2.42) |
+| [chromium-hurd](https://github.com/MevPR/chromium-hurd) | Chromium for the Hurd, used as the acceptance test: it opens and renders https://www.duckduckgo.com on 2 CPUs |
+
 ## Status
 
 | | |
 |---|---|
 | **Fixes** | 6 patches on current upstream master (branch `main` = `smp-fixes` + this README) |
 | **Tested** | on Debian GNU/Hurd amd64 (hurd 0.9.git20250801, rebuilt in a Hurd VM with these fixes; libports in the form adapted to that version), together with the gnumach and glibc fixes: a parallel build/sort/tar/find/fork stress test on 2 CPUs passes 6 times out of 6 |
+| **Tested with Chromium** | on Debian GNU/Hurd unstable of November 2026 (hurd 0.9.git20261028, where all 6 patches apply unchanged): with these fixes installed, Chromium opens and renders https://www.duckduckgo.com on 2 CPUs, twice; with Debian's servers without them, the same load made ext2fs report "looked up a bogus port" and the system hang |
 | **Upstream** | prepared for bug-hurd@gnu.org, **not yet sent** |
 
 ## What was fixed
